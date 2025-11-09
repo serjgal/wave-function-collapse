@@ -4,6 +4,7 @@ from pygame.sprite import Sprite
 from PIL import Image
 from wfc import *
 import sys
+import math
 
 clock = pygame.time.Clock()
 running = True
@@ -18,22 +19,24 @@ tile_size = 50
 
 pygame.init()
 print(len(tiles))
-w, h = len(tiles) // width, len(tiles) // height
-w, h = w * tile_size * 2, h * tile_size * 2
+d = int(math.sqrt(len(tiles)))
+w, h = d * tile_size * 2, d * tile_size * 2
 screen = pygame.display.set_mode((w, h))
 pygame.display.set_caption("Tile show")
 
 group = pygame.sprite.Group()
 for i, t in enumerate(tiles):
-    d = t.get_image()
-    d = pygame.transform.scale(d, (tile_size, tile_size))
-    cx = i % width
-    cy = i // height
+    data = t.get_image()
+    data = pygame.transform.scale(data, (tile_size, tile_size))
+    cx = i % d
+    cy = i // d
     r = pygame.Rect(cx * 3 / 2 * tile_size, cy * 3 / 2 * tile_size, tile_size, tile_size)
 
     sprite = Sprite(group)
-    sprite.image = d
+    sprite.image = data
     sprite.rect = r
+
+print([t.weight for t in tiles])
 
 if __name__ == "__main__":
     while running:
