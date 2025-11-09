@@ -1,3 +1,4 @@
+import random
 from collections import Counter
 import math
 
@@ -93,6 +94,10 @@ class tile:
 
         return surface
 
+    def get_color(self) -> tuple:
+        return self.data[len(self.data)//2]
+
+
 def generate_tiles(img: PIL.Image.Image) -> list[tile]:
     width, height = img.size
     pixels = img.load()
@@ -115,3 +120,94 @@ def generate_tiles(img: PIL.Image.Image) -> list[tile]:
     count = Counter(tile_data)
     tiles = [tile(d, c) for d, c in count.items()]
     return tiles
+
+class cell:
+    x: int
+    y: int
+
+    possible_tiles: list[tile]
+    is_collapsed: bool
+
+    color: tuple
+
+    def __init__(self, x: int, y: int, all_tiles) -> None:
+        self.x = x
+        self.y = y
+
+        self.possible_tiles = all_tiles[::]
+        self.is_collapsed = False
+
+    def get_avg_color(self) -> tuple:
+        rs, gs, bs = 0, 0, 0
+        for tile in self.possible_tiles:
+            r, g, b, *_ = tile.get_color()
+            rs += r
+            gs += g
+            bs += b
+        rs /= len(self.possible_tiles)
+        gs /= len(self.possible_tiles)
+        bs /= len(self.possible_tiles)
+
+        return int(rs), int(gs), int(bs)
+
+    def get_entropy(self) -> float:
+        if len(self.possible_tiles) == 1:
+            return 0
+
+        return sum(t.weight for t in self.possible_tiles) / len(self.possible_tiles)
+
+    def collapse(self) -> None:
+        self.is_collapsed = True
+        weights = [p.weight for p in self.possible_tiles]
+        r = random.choices(population= self.possible_tiles, weights =weights, k = 1)[0]
+
+        self.possible_tiles = []
+        self.color = r.get_color()
+
+
+class wfc_sim:
+
+    width: int
+    height: int
+
+    cells: list[cell]
+    available_cells: list[cell]
+
+    def __init__(self, width: int, height: int, all_tiles: list[tile]) -> None:
+        self.width = width
+        self.height = height
+
+        self.cells = [
+            cell(x, y, all_tiles)
+            for y in range(height)
+            for x in range(width)
+        ]
+        self.available_cells = self.cells[::]
+
+    def get_cell(self, x: int, y: int) -> cell: return self.cells[y * self.width + x]
+
+    def get_image(self) -> pygame.Surface:
+        # Create the PIL image
+        img = Image.new("RGB", (self.width, self.height))
+        img_data = [c.get_avg_color() if not c.is_collapsed else c.color for c in self.cells]
+        img.putdata(img_data)
+
+        # Convert the PIL image to a Pygame surface
+        mode = img.mode
+        size = img.size
+        data = img.tobytes()
+        surface = pygame.image.fromstring(data, size, mode)
+
+        return surface
+
+    def iterate(self):
+        if not self.available_cells: return
+
+        min_cell = min(self.available_cells, key=lambda c: c.get_entropy())
+        min_cell.collapse()
+        self.available_cells.remove(min_cell)
+
+
+
+
+
