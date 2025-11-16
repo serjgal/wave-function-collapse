@@ -1,16 +1,15 @@
 import random
-import pygame
-import numpy as np
 import sys
+import pygame
 from wfc import Tile, Cell, wfc
-from support import get_max_contrast_color, log_kv_csv
+from support import get_max_contrast_color
 
 # Initialization
 pygame.init()
 
 WIDTH = 800
 screen = pygame.display.set_mode((WIDTH, WIDTH))
-pygame.display.set_caption("Blank Pygame Script")
+pygame.display.set_caption("WFC")
 
 clock = pygame.time.Clock()
 FPS = 100
@@ -49,7 +48,7 @@ def main():
     is_done = False
     i = 0
     while running:
-        # dt = clock.tick(1 if is_done else FPS) / 1000  # delta time in seconds
+        dt = clock.tick(1 if is_done else FPS) / 1000  # delta time in seconds
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -57,25 +56,17 @@ def main():
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 running = False
 
-        i += 1
-        is_done = wfc(all_cells, DIMENSIONS)
-        if is_done:
-            e = sum(1 if c.is_error else 0 for c in all_cells)
-            log_kv_csv("log.csv",
-                       numberOfLoops=i,
-                       errorCount=e
-            )
-            break
-
         # Drawing logic here
         screen.fill((247, 161, 239))  # Clear screen to black
         for cell in all_cells:
             cell.is_checked = False
             cell.draw(screen, CELL_D)
 
+        is_done = wfc(all_cells, DIMENSIONS)
+
         pygame.display.flip()
-    # pygame.quit()
-    # sys.exit()
+    pygame.quit()
+    sys.exit()
 
 # test to find fail
 def test(seed: int):
@@ -109,5 +100,4 @@ def test(seed: int):
 
 # Start the program
 if __name__ == "__main__":
-    for _ in range(1000):
-        main()
+    main()

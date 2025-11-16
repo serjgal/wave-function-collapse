@@ -148,7 +148,7 @@ class Cell:
     def set_fail_color(cls, color: tuple[int, int, int]):
         cls.FAIL_COLOR = color
 
-def reduce_entropy(cells: list[Cell], cell: Cell, dim: int, depth: int = 0, max_depth: int = 1):
+def reduce_entropy(cells: list[Cell], cell: Cell, dim: int, depth: int = 0, max_depth: int = 3):
     if depth >= max_depth: return
 
     if cell.is_checked or cell.is_error: return
@@ -189,18 +189,12 @@ def collapse_cells(cell: Cell):
     cell.posable_tiles = chosen
 
 def wfc(cells: list[Cell], dim: int) -> bool:
-    avalable_cells = [c for c in cells if not c.is_collapsed and not c.is_error]
+    available_cells = [c for c in cells if not c.is_collapsed and not c.is_error]
 
-    if len(avalable_cells) == 0: return True
+    if len(available_cells) == 0: return True
 
-    minE = min([c.get_entropy() for c in avalable_cells])
-    min_cells = [c for c in avalable_cells if c.get_entropy() == minE]
-
-    if minE == -1:
-        for c in min_cells:
-            collapse_cells(c)
-            reduce_entropy(cells, c, dim)
-        return False
+    minE = min([c.get_entropy() for c in available_cells])
+    min_cells = [c for c in available_cells if c.get_entropy() == minE]
 
     target = choice(min_cells)
     collapse_cells(target)
