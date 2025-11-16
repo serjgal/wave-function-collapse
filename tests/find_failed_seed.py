@@ -1,31 +1,34 @@
 # find_first_failing_seed.py
 
-# Import your main program (change this import!)
-from main import test  # assumes test(seed) -> True or raises error
+# Import your test function (change this import!)
+from main import test   # test(seed) -> True, False, or raises error
 
 
-def find_first_failing_seed(start_seed=0, max_seed=10_000_000):
+def find_first_failing_seed(start_seed=10, max_seed=10_000_000):
     """
-    Runs test(seed) starting from start_seed,
-    returns the first seed that fails.
+    For each seed:
+        Loop test(seed) until:
+          - test returns True  -> seed passes, move to next seed
+          - test raises error  -> seed fails, return seed
+          - test returns False -> keep looping same seed
     """
     for seed in range(start_seed, max_seed):
-        try:
-            result = test(seed)
+        print(f"Testing seed {seed}...")
 
-            if result is True:
-                print(f"Seed {seed} passed.")
-                continue
+        while True:
+            try:
+                result = test(seed)
 
-            # If the function returns something weird
-            print(f"Seed {seed} returned non-True value: {result}")
-            return seed
+                if result is True:
+                    # Seed finally succeeded → go to next seed
+                    print(f"Seed {seed} passed.")
+                    break
 
-        except Exception as e:
-            print(f"Seed {seed} FAILED with error: {e}")
-            return seed
+            except Exception as e:
+                print(f"Seed {seed} FAILED with error: {e}")
+                return seed
 
-    print("No failing seed found in range.")
+    print("No failing seeds found in range.")
     return None
 
 

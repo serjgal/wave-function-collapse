@@ -1,7 +1,7 @@
 import pygame
 import numpy as np
-
-import numpy as np
+import csv
+import os
 
 def wrapped_subimg(pixels, x, y, w, h):
     width, height = pixels.shape[:2]
@@ -31,4 +31,22 @@ def get_max_contrast_color(surface: pygame.Surface) -> tuple[int, int, int]:
     contrast_b = 255 - int(avg_b)
 
     return (contrast_r, contrast_g, contrast_b)
+
+def log_kv_csv(filepath, **kwargs):
+    """
+    Appends a row of key=value data into a CSV file.
+    Automatically creates the header if the file does not exist.
+    """
+    file_exists = os.path.exists(filepath)
+
+    # Open in append mode
+    with open(filepath, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=kwargs.keys())
+
+        # If the file is new, write the header
+        if not file_exists:
+            writer.writeheader()
+
+        # Write the actual row
+        writer.writerow(kwargs)
 

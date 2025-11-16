@@ -1,7 +1,5 @@
 import random
 from random import choice
-random.seed(4)
-
 import pygame
 import numpy as np
 from support import *
@@ -16,6 +14,7 @@ class Tile:
     tile_size: int = 3
 
     neighbors: dict[str, list['Tile']]
+    frequency: int
 
     def __init__(self, source_img_data: np.ndarray, x: int, y: int):
         self.img_data = wrapped_subimg(source_img_data, x, y, self.tile_size, self.tile_size)
@@ -26,6 +25,7 @@ class Tile:
         self.center_img = pygame.surfarray.make_surface(np.array([[px]])) # shape (1,1,3)
 
         self.neighbors = {"top": [], "right": [], "bottom": [], "left": []}
+        self.frequency = 1
 
     def draw_full(self, surface, x, y, size):
         scaled = pygame.transform.scale(self.img, (size, size))
@@ -52,14 +52,34 @@ class Tile:
             if np.array_equal(self.img_data[:midI + 1, :], other.img_data[midI:, :]):
                 self.neighbors["left"].append(other)
 
-class Cell:
+    def __eq__(self, other):
+        return isinstance(other, Tile) and np.array_equal(self.img_data, other.img_data)
 
+    def __hash__(self):
+        return hash(tuple(self.img_data.flatten()))
+
+    @staticmethod
+    def compress(tiles: list['Tile']):
+        seen = {}
+        result = []
+
+        for obj in tiles:
+            if obj in seen:
+                seen[obj].frequency += 1
+            else:
+                seen[obj] = obj
+                result.append(obj)
+
+        return result
+
+class Cell:
     x: int
     y: int
 
     posable_tiles: list[Tile]
     is_collapsed: bool
     is_checked: bool
+    is_error: bool
 
     img: pygame.Surface
     img_data: np.ndarray
@@ -69,6 +89,7 @@ class Cell:
     def __init__(self, all: list[Tile], x: int, y: int):
         self.x = x
         self.y = y
+
 
         self.posable_tiles = all[::]
         self.is_collapsed = False
@@ -119,7 +140,9 @@ class Cell:
 
             pygame.draw.rect(surface, (0, 0, 0), (dx, dy, size, size), 1)
 
-    def get_entropy(self): return len(self.posable_tiles)
+    def get_entropy(self):
+        if len(self.posable_tiles) == 1: return -1
+        return sum(t.frequency for t in self.posable_tiles)
 
     @classmethod
     def set_fail_color(cls, color: tuple[int, int, int]):
@@ -159,7 +182,11 @@ def reduce_entropy(cells: list[Cell], cell: Cell, dim: int, depth: int = 0, max_
     for dx, dy, direction in checks:
         check_neighbor(dx, dy, direction)
 
-
+def collapse_cells(cell: Cell):
+    cell.is_collapsed = True
+    chosen = random.choices(cell.posable_tiles,
+                            weights = [t.frequency for t in cell.posable_tiles])
+    cell.posable_tiles = chosen
 
 def wfc(cells: list[Cell], dim: int) -> bool:
     avalable_cells = [c for c in cells if not c.is_collapsed and not c.is_error]
@@ -168,10 +195,15 @@ def wfc(cells: list[Cell], dim: int) -> bool:
 
     minE = min([c.get_entropy() for c in avalable_cells])
     min_cells = [c for c in avalable_cells if c.get_entropy() == minE]
-    target = choice(min_cells)
 
-    target.is_collapsed = True
-    target.posable_tiles = [choice(target.posable_tiles)]
+    if minE == -1:
+        for c in min_cells:
+            collapse_cells(c)
+            reduce_entropy(cells, c, dim)
+        return False
+
+    target = choice(min_cells)
+    collapse_cells(target)
 
     reduce_entropy(cells, target, dim)
 
