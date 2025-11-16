@@ -1,213 +1,181 @@
 import random
-from collections import Counter
-import math
+from random import choice
+random.seed(4)
 
-from PIL import Image
-import PIL
 import pygame
+import numpy as np
+from support import *
 
-TILE_DIMENSIONS = (3, 3)
-class tile:
-    data: list[tuple] # list of RBG values
-    weight: int
+class Tile:
+    img: pygame.Surface
+    img_data: np.ndarray
 
-    north_p: list['tile']
-    south_p: list['tile']
-    east_p: list['tile']
-    west_p: list['tile']
+    center_img: pygame.Surface
+    center_img_data: np.ndarray
 
-    def __init__(self, data: list[tuple], weight) -> None:
-        # print(len(data))
-        assert len(data) == TILE_DIMENSIONS[0] * TILE_DIMENSIONS[1]
-        assert weight > 0
+    tile_size: int = 3
 
-        self.data = data
-        self.weight = weight
+    neighbors: dict[str, list['Tile']]
 
-        self.north_p = []
-        self.south_p = []
-        self.east_p = []
-        self.west_p = []
+    def __init__(self, source_img_data: np.ndarray, x: int, y: int):
+        self.img_data = wrapped_subimg(source_img_data, x, y, self.tile_size, self.tile_size)
+        self.img = pygame.surfarray.make_surface(self.img_data)
 
-    def get_top(self):
-        half = math.ceil(TILE_DIMENSIONS[1] / 2)
-        ei = half * TILE_DIMENSIONS[0]
-        return self.data[:ei]
+        px = self.img_data[self.tile_size // 2, self.tile_size // 2]  # shape (3,)
+        self.center_img_data = px
+        self.center_img = pygame.surfarray.make_surface(np.array([[px]])) # shape (1,1,3)
 
-    def get_bottom(self):
-        half = math.ceil(TILE_DIMENSIONS[1] / 2)
-        si = TILE_DIMENSIONS[1] - half
-        si *= TILE_DIMENSIONS[0]
-        return self.data[si:]
+        self.neighbors = {"top": [], "right": [], "bottom": [], "left": []}
 
-    def get_left(self):
-        w, h = TILE_DIMENSIONS
-        half = math.ceil(w / 2)
-        left_half = []
+    def draw_full(self, surface, x, y, size):
+        scaled = pygame.transform.scale(self.img, (size, size))
+        surface.blit(scaled, (x, y))
 
-        for y in range(h):
-            start = y * w
-            end = start + half
-            left_half.extend(self.data[start:end])
-        return left_half
+    def draw_center(self, surface, x, y, size):
+        scaled = pygame.transform.scale(self.center_img, (size, size))
+        surface.blit(scaled, (x, y))
 
-    def get_right(self):
-        w, h = TILE_DIMENSIONS
-        half = math.ceil(w / 2)
-        right_half = []
+    def set_neighbors(self, all: list['Tile']):
+        midI = self.tile_size // 2
 
-        for y in range(h):
-            start = y * w + (w - half)
-            end = start + half
-            right_half.extend(self.data[start:end])
-        return right_half
+        for other in all:
+            # top
+            if np.array_equal(self.img_data[:, :midI + 1], other.img_data[:, midI:]):
+                self.neighbors["top"].append(other)
+            # right
+            if np.array_equal(self.img_data[midI:, :], other.img_data[:midI + 1, :]):
+                self.neighbors["right"].append(other)
+            # bottom
+            if np.array_equal(self.img_data[:, midI:], other.img_data[:, :midI + 1]):
+                self.neighbors["bottom"].append(other)
+            # left
+            if np.array_equal(self.img_data[:midI + 1, :], other.img_data[midI:, :]):
+                self.neighbors["left"].append(other)
 
-    def set_neighbors(self, tiles: list['tile']) -> None:
-        st = self.get_top()
-        sb = self.get_bottom()
-        sr = self.get_right()
-        sl = self.get_left()
+class Cell:
 
-        for t in tiles:
-            if t is self: continue
-
-            tt = t.get_top()
-            tb = t.get_bottom()
-            tr = t.get_right()
-            tl = t.get_left()
-
-            if st == tb: self.north_p.append(t)
-            elif sb == tt: self.south_p.append(t)
-            elif sr == tl: self.east_p.append(t)
-            elif tl == tb: self.west_p.append(t)
-
-    def get_image(self) -> pygame.Surface:
-        # Create the PIL image
-        img = Image.new("RGB", TILE_DIMENSIONS)
-        img.putdata(self.data)
-
-        # Convert the PIL image to a Pygame surface
-        mode = img.mode
-        size = img.size
-        data = img.tobytes()
-        surface = pygame.image.fromstring(data, size, mode)
-
-        return surface
-
-    def get_color(self) -> tuple:
-        return self.data[len(self.data)//2]
-
-
-def generate_tiles(img: PIL.Image.Image) -> list[tile]:
-    width, height = img.size
-    pixels = img.load()
-
-    safeX = lambda x: x % width
-    safeY = lambda y: y % height
-
-    dx = TILE_DIMENSIONS[0] // 2
-    dy = TILE_DIMENSIONS[1] // 2
-
-    tile_data = []
-    for x in range(width):
-        for y in range(height):
-            tile_data.append(
-                tuple(pixels[safeX(nx), safeY(ny)]
-                           for ny in range(x - dx, x + dx + 1)
-                           for nx in range(y - dy, y + dy + 1))
-            )
-
-    count = Counter(tile_data)
-    tiles = [tile(d, c) for d, c in count.items()]
-    return tiles
-
-class cell:
     x: int
     y: int
 
-    possible_tiles: list[tile]
+    posable_tiles: list[Tile]
     is_collapsed: bool
+    is_checked: bool
 
-    color: tuple
+    img: pygame.Surface
+    img_data: np.ndarray
 
-    def __init__(self, x: int, y: int, all_tiles) -> None:
+    FAIL_COLOR: tuple[int, int, int] = (0,0,0)
+
+    def __init__(self, all: list[Tile], x: int, y: int):
         self.x = x
         self.y = y
 
-        self.possible_tiles = all_tiles[::]
+        self.posable_tiles = all[::]
         self.is_collapsed = False
+        self.is_checked = False
 
-    def get_avg_color(self) -> tuple:
-        rs, gs, bs = 0, 0, 0
-        for tile in self.possible_tiles:
-            r, g, b, *_ = tile.get_color()
-            rs += r
-            gs += g
-            bs += b
-        rs /= len(self.possible_tiles)
-        gs /= len(self.possible_tiles)
-        bs /= len(self.possible_tiles)
+        self.img_data = np.array(self.get_average_color())
+        color = tuple(int(c) for c in self.img_data)
+        self.img = pygame.Surface((1, 1))
+        self.img.fill(color)
 
-        return int(rs), int(gs), int(bs)
+        self.is_error = False
 
-    def get_entropy(self) -> float:
-        if len(self.possible_tiles) == 1:
-            return 0
+    def get_average_color(self):
+        n = len(self.posable_tiles)
+        r = g = b = 0
 
-        return sum(t.weight for t in self.possible_tiles) / len(self.possible_tiles)
+        for t in self.posable_tiles:
+            cx = t.center_img_data.astype(int)  # rgb array shape (3,)
+            r += cx[0]
+            g += cx[1]
+            b += cx[2]
 
-    def collapse(self) -> None:
-        self.is_collapsed = True
-        weights = [p.weight for p in self.possible_tiles]
-        r = random.choices(population= self.possible_tiles, weights =weights, k = 1)[0]
+        return r // n, g // n, b // n
 
-        self.possible_tiles = []
-        self.color = r.get_color()
+    def draw(self, surface, size: int):
+        dx, dy = self.x * size, self.y * size
+        pos = (dx, dy)
+
+        # if self.is_error: return
+        if len(self.posable_tiles) == 0:
+            self.img_data = np.array(Cell.FAIL_COLOR)
+            # self.is_collapsed = True
+            self.is_error = True
+
+        if self.is_collapsed:
+            self.posable_tiles[0].draw_center(surface, dx, dy, size)
+        else:
+            if self.is_error:
+                self.img_data = np.array(Cell.FAIL_COLOR)
+            else:
+                self.img_data = np.array(self.get_average_color())
+            color = tuple(int(c) for c in self.img_data)
+            self.img = pygame.Surface((1, 1))
+            self.img.fill(color)
+
+            scaled = pygame.transform.scale(self.img, (size, size))
+            surface.blit(scaled, pos)
+
+            pygame.draw.rect(surface, (0, 0, 0), (dx, dy, size, size), 1)
+
+    def get_entropy(self): return len(self.posable_tiles)
+
+    @classmethod
+    def set_fail_color(cls, color: tuple[int, int, int]):
+        cls.FAIL_COLOR = color
+
+def reduce_entropy(cells: list[Cell], cell: Cell, dim: int, depth: int = 0, max_depth: int = 1):
+    if depth >= max_depth: return
+
+    if cell.is_checked or cell.is_error: return
+    cell.is_checked = True
+
+    toI = lambda x, y: x * dim + y
+    x, y = cell.x, cell.y
+
+    def check_neighbor(dx: int, dy: int, direction: str):
+        nx = x + dx
+        ny = y + dy
+
+        if not (0 <= nx < dim and 0 <= ny < dim): return
+        neighbor = cells[toI(nx, ny)]
+        if neighbor.is_collapsed or neighbor.is_error: return
+
+        valid = []
+        for t in cell.posable_tiles:
+            valid.extend(t.neighbors[direction])
+
+        neighbor.posable_tiles = [t for t in neighbor.posable_tiles if t in valid]
+        reduce_entropy(cells, neighbor, dim, depth + 1)
+
+    checks = [
+        (1, 0, "right"),
+        (-1, 0, "left"),
+        (0, 1, "bottom"),
+        (0, -1, "top"),
+    ]
+
+    for dx, dy, direction in checks:
+        check_neighbor(dx, dy, direction)
 
 
-class wfc_sim:
 
-    width: int
-    height: int
+def wfc(cells: list[Cell], dim: int) -> bool:
+    avalable_cells = [c for c in cells if not c.is_collapsed and not c.is_error]
 
-    cells: list[cell]
-    available_cells: list[cell]
+    if len(avalable_cells) == 0: return True
 
-    def __init__(self, width: int, height: int, all_tiles: list[tile]) -> None:
-        self.width = width
-        self.height = height
+    minE = min([c.get_entropy() for c in avalable_cells])
+    min_cells = [c for c in avalable_cells if c.get_entropy() == minE]
+    target = choice(min_cells)
 
-        self.cells = [
-            cell(x, y, all_tiles)
-            for y in range(height)
-            for x in range(width)
-        ]
-        self.available_cells = self.cells[::]
+    target.is_collapsed = True
+    target.posable_tiles = [choice(target.posable_tiles)]
 
-    def get_cell(self, x: int, y: int) -> cell: return self.cells[y * self.width + x]
+    reduce_entropy(cells, target, dim)
 
-    def get_image(self) -> pygame.Surface:
-        # Create the PIL image
-        img = Image.new("RGB", (self.width, self.height))
-        img_data = [c.get_avg_color() if not c.is_collapsed else c.color for c in self.cells]
-        img.putdata(img_data)
-
-        # Convert the PIL image to a Pygame surface
-        mode = img.mode
-        size = img.size
-        data = img.tobytes()
-        surface = pygame.image.fromstring(data, size, mode)
-
-        return surface
-
-    def iterate(self):
-        if not self.available_cells: return
-
-        min_cell = min(self.available_cells, key=lambda c: c.get_entropy())
-        min_cell.collapse()
-        self.available_cells.remove(min_cell)
-
-
+    return False
 
 
 
